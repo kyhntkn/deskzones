@@ -35,6 +35,7 @@ public partial class App : Application
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Yeni bölme", null, (_, _) => _manager!.NewFence());
+        menu.Items.Add("Bölmeleri hizala", null, (_, _) => _manager!.ArrangeAll());
 
         _toggleIcons = new Forms.ToolStripMenuItem("", null, (_, _) =>
         {
