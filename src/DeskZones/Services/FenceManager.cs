@@ -90,7 +90,7 @@ public class FenceManager
             Rules = rules.ToList()
         };
 
-        _config.Fences.Add(Make("Programlar", 0, ".lnk", ".exe", ".url", ".msi", ".bat"));
+        _config.Fences.Add(Make("Programlar", 0, "[sistem]", ".lnk", ".exe", ".url", ".msi", ".bat"));
         _config.Fences.Add(Make("Klasörler", 1, "[klasör]"));
         var docs = Make("Dosyalar ve Belgeler", 2);
         docs.IsDefault = true;
@@ -105,9 +105,9 @@ public class FenceManager
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var f in _config.Fences)
-            f.Items = f.Items.Where(p => existing.Contains(p) && seen.Add(p)).ToList();
+            f.Items = f.Items.Where(p => (VirtualItems.IsVirtual(p) || existing.Contains(p)) && seen.Add(p)).ToList();
 
-        foreach (var p in onDesktop)
+        foreach (var p in onDesktop.Concat(VirtualItems.Defaults))
             if (!seen.Contains(p)) PickFence(p).Items.Add(p);
     }
 
@@ -115,6 +115,11 @@ public class FenceManager
 
     public FenceConfig PickFence(string path)
     {
+        if (VirtualItems.IsVirtual(path))
+        {
+            var sys = _config.Fences.FirstOrDefault(f => f.Rules.Contains("[sistem]"));
+            if (sys != null) return sys;
+        }
         bool isDir = System.IO.Directory.Exists(path);
         string ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
 
@@ -132,7 +137,7 @@ public class FenceManager
     public static List<string> ParseRules(string text) =>
         text.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(r => r.Trim().ToLowerInvariant())
-            .Select(r => r == "[klasor]" ? "[klasör]" : r)
+            .Select(r => r == "[klasor]" ? "[klasör]" : r == "[sistem]" ? "[sistem]" : r)
             .Select(r => r.StartsWith('[') || r.StartsWith('.') ? r : "." + r)
             .Distinct()
             .ToList();

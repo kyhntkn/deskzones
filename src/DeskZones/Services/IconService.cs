@@ -24,11 +24,37 @@ public static class IconService
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SHGetFileInfo(string path, uint attrs, ref SHFILEINFO info, uint size, uint flags);
 
+    [DllImport("shell32.dll", EntryPoint = "SHGetFileInfoW", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SHGetFileInfoPidl(IntPtr pidl, uint attrs, ref SHFILEINFO info, uint size, uint flags);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHParseDisplayName(string name, IntPtr bindCtx, out IntPtr pidl, uint sfgaoIn, out uint sfgaoOut);
+
+    [DllImport("ole32.dll")]
+    private static extern void CoTaskMemFree(IntPtr ptr);
+
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr handle);
 
     private const uint SHGFI_ICON = 0x100;
     private const uint SHGFI_LARGEICON = 0x0;
+    private const uint SHGFI_DISPLAYNAME = 0x200;
+    private const uint SHGFI_PIDL = 0x8;
+
+    /// <summary>Sanal öğelerin (Bu Bilgisayar vb.) Windows dilindeki adı.</summary>
+    public static string GetDisplayName(string shellPath)
+    {
+        IntPtr pidl = IntPtr.Zero;
+        try
+        {
+            if (SHParseDisplayName(shellPath, IntPtr.Zero, out pidl, 0, out _) != 0) return shellPath;
+            var info = new SHFILEINFO();
+            SHGetFileInfoPidl(pidl, 0, ref info, (uint)Marshal.SizeOf(info), SHGFI_DISPLAYNAME | SHGFI_PIDL);
+            return string.IsNullOrEmpty(info.szDisplayName) ? shellPath : info.szDisplayName;
+        }
+        catch { return shellPath; }
+        finally { if (pidl != IntPtr.Zero) CoTaskMemFree(pidl); }
+    }
 
     public static ImageSource? GetIcon(string path)
     {
@@ -43,7 +69,22 @@ public static class IconService
         try
         {
             var info = new SHFILEINFO();
-            var result = SHGetFileInfo(path, 0, ref info, (uint)Marshal.SizeOf(info), SHGFI_ICON | SHGFI_LARGEICON);
+            IntPtr result;
+            if (VirtualItems.IsVirtual(path))
+            {
+                IntPtr pidl = IntPtr.Zero;
+                try
+                {
+                    if (SHParseDisplayName(path, IntPtr.Zero, out pidl, 0, out _) != 0) return null;
+                    result = SHGetFileInfoPidl(pidl, 0, ref info, (uint)Marshal.SizeOf(info),
+                        SHGFI_ICON | SHGFI_LARGEICON | SHGFI_PIDL);
+                }
+                finally { if (pidl != IntPtr.Zero) CoTaskMemFree(pidl); }
+            }
+            else
+            {
+                result = SHGetFileInfo(path, 0, ref info, (uint)Marshal.SizeOf(info), SHGFI_ICON | SHGFI_LARGEICON);
+            }
             if (result == IntPtr.Zero || info.hIcon == IntPtr.Zero) return null;
             try
             {
