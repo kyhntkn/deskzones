@@ -5,7 +5,7 @@ Masaüstünü isimli, yarı saydam bölmelere ayıran Windows programı.
 - Bölmelerin konum, boyut ve içeriği hatırlanır (`%AppData%\DeskZones\config.json`)
 - Masaüstüne düşen yeni dosyalar kurallara göre ilgili bölmeye girer, alt alta/yan yana dizilir
 - Simgeleri bölmeler arasında ve bölme içinde sürükleyip sıralayabilirsin
-- Bölme adı: başlığa çift tıkla. Sağ tık: kurallar, varsayılan bölme, yeni/sil
+- Bölme adı: başlığa çift tıkla. Sağ tık: kurallar, varsayılan bölme, yeni/sil. Bu Bilgisayar, Ağ, Geri Dönüşüm Kutusu gibi sistem simgeleri de bölmelerde görünür (kural: `[sistem]`)
 - Sistem tepsisi simgesinden: yeni bölme, masaüstü simgelerini göster/gizle, çıkış
 
 ## Kurallar
