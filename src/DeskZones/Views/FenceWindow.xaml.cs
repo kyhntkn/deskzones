@@ -181,7 +181,7 @@ public partial class FenceWindow : Window
 
     private void ShowItem_Click(object sender, RoutedEventArgs e)
     {
-        if (ItemsList.SelectedItem is FenceItem item)
+        if (ItemsList.SelectedItem is FenceItem { IsVirtual: false } item)
             Process.Start("explorer.exe", $"/select,\"{item.FullPath}\"");
     }
 
@@ -223,7 +223,7 @@ public partial class FenceWindow : Window
 
         var data = new DataObject();
         data.SetData(DragFormat, $"{Config.Id}|{item.FullPath}");
-        data.SetData(DataFormats.FileDrop, new[] { item.FullPath });
+        if (!item.IsVirtual) data.SetData(DataFormats.FileDrop, new[] { item.FullPath });
         DragDrop.DoDragDrop(ItemsList, data, DragDropEffects.Move | DragDropEffects.Copy);
     }
 
