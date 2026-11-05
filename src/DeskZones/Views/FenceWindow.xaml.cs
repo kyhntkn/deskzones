@@ -15,6 +15,15 @@ public partial class FenceWindow : Window
 {
     private const string DragFormat = "DeskZones.Item";
 
+    // Izgara ölçüleri (XAML ile uyumlu): hücre 88x88, kenar boşlukları 10 / 44
+    public const double CellW = 88, CellH = 88, ChromeW = 10, ChromeH = 44, Grid = 20;
+
+    public static double SnapWidth(double w) =>
+        ChromeW + Math.Max(2, Math.Round((w - ChromeW) / CellW)) * CellW;
+
+    public static double SnapHeight(double h) =>
+        ChromeH + Math.Max(1, Math.Round((h - ChromeH) / CellH)) * CellH;
+
     private readonly FenceManager _manager;
     private Point _dragStart;
     private FenceItem? _dragItem;
@@ -31,10 +40,11 @@ public partial class FenceWindow : Window
         Config = config;
         _manager = manager;
 
-        Left = config.Left;
-        Top = config.Top;
-        Width = config.Width;
-        Height = config.Height;
+        // Kayıtlı düzensiz boyutları da ızgaraya oturt
+        Left = Math.Round(config.Left / Grid) * Grid;
+        Top = Math.Round(config.Top / Grid) * Grid;
+        Width = SnapWidth(config.Width);
+        Height = SnapHeight(config.Height);
 
         foreach (var p in config.Items) Items.Add(new FenceItem(p));
         ItemsList.ItemsSource = Items;
@@ -43,6 +53,45 @@ public partial class FenceWindow : Window
         LocationChanged += (_, _) => _manager.ScheduleSave();
         SizeChanged += (_, _) => _manager.ScheduleSave();
         Activated += (_, _) => SendToBottom();
+        StateChanged += (_, _) =>
+        {
+            // "Masaüstünü göster" küçültürse geri getir
+            if (WindowState == WindowState.Minimized)
+                Dispatcher.BeginInvoke(new Action(() => { WindowState = WindowState.Normal; }));
+        };
+    }
+
+    // ---------------- Izgara / hizalama ----------------
+
+    private const int WM_EXITSIZEMOVE = 0x0232;
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_EXITSIZEMOVE) SnapToGrid(); // taşıma/boyutlandırma bitince
+        return IntPtr.Zero;
+    }
+
+    private void SnapToGrid()
+    {
+        Width = SnapWidth(Width);
+        Height = SnapHeight(Height);
+        Left = Math.Round(Left / Grid) * Grid;
+        Top = Math.Round(Top / Grid) * Grid;
+        _manager.ScheduleSave();
+    }
+
+    public void ApplyGeometry(double left, double top, double width, double height)
+    {
+        Left = left; Top = top; Width = width; Height = height;
+        _manager.ScheduleSave();
+    }
+
+    /// <summary>"Masaüstünü göster" aktifken bölmeleri öne alır, bitince tekrar alta indirir.</summary>
+    public void SetDesktopShown(bool shown)
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Topmost = shown;
+        if (!shown) SendToBottom();
     }
 
     // ---------------- Başlık ----------------
@@ -269,6 +318,7 @@ public partial class FenceWindow : Window
     private void Default_Click(object sender, RoutedEventArgs e) => _manager.SetDefault(this);
     private void NewFence_Click(object sender, RoutedEventArgs e) => _manager.NewFence();
     private void Delete_Click(object sender, RoutedEventArgs e) => _manager.DeleteFence(this);
+    private void Arrange_Click(object sender, RoutedEventArgs e) => _manager.ArrangeAll();
 
     // ---------------- Masaüstü katmanında tutma ----------------
 
@@ -291,6 +341,7 @@ public partial class FenceWindow : Window
         var hwnd = new WindowInteropHelper(this).Handle;
         // Alt+Tab listesinde görünmesin
         SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TOOLWINDOW);
+        HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         SendToBottom();
     }
 

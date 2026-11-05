@@ -3,12 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
-        MinWidth="150" MinHeight="110" AllowDrop="True"
+        MinWidth="186" MinHeight="132" AllowDrop="True"
         WindowStartupLocation="Manual" Title="DeskZones">
 
     <Window.Resources>
         <Style TargetType="ListBoxItem">
             <Setter Property="Width" Value="84"/>
+            <Setter Property="Height" Value="84"/>
             <Setter Property="Margin" Value="2"/>
             <Setter Property="Padding" Value="2"/>
             <Setter Property="Template">
@@ -40,6 +41,7 @@
                 <MenuItem Header="Varsayılan bölme yap" Click="Default_Click"/>
                 <Separator/>
                 <MenuItem Header="Yeni bölme" Click="NewFence_Click"/>
+                <MenuItem Header="Tüm bölmeleri hizala" Click="Arrange_Click"/>
                 <MenuItem Header="Bu bölmeyi sil" Click="Delete_Click"/>
             </ContextMenu>
         </Border.ContextMenu>
