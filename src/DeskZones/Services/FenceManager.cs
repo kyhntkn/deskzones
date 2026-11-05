@@ -11,6 +11,7 @@ public class FenceManager
     private AppConfig _config = new();
     private readonly List<FenceWindow> _windows = new();
     private readonly DesktopService _desktop = new();
+    private readonly ShowDesktopWatcher _showDesktop = new();
     private readonly DispatcherTimer _saveTimer;
     private bool _shutDown;
 
@@ -40,6 +41,9 @@ public class FenceManager
         _desktop.Renamed += (o, n) => Ui(() => OnRenamed(o, n));
         _desktop.Start();
 
+        _showDesktop.Changed += shown => { foreach (var w in _windows) w.SetDesktopShown(shown); };
+        _showDesktop.Start();
+
         SaveNow();
     }
 
@@ -48,6 +52,7 @@ public class FenceManager
         if (_shutDown) return;
         _shutDown = true;
         _saveTimer.Stop();
+        _showDesktop.Stop();
         SaveNow();
         _desktop.Dispose();
         DesktopService.SetIconsVisible(true); // çıkarken masaüstü simgelerini geri getir
@@ -76,9 +81,11 @@ public class FenceManager
     private void CreateDefaultFences()
     {
         var wa = SystemParameters.WorkArea;
-        const double margin = 16;
-        double w = (wa.Width - margin * 4) / 3;
-        const double h = 260;
+        const double margin = 20;
+        double slot = (wa.Width - margin * 4) / 3;
+        int cols = Math.Max(2, (int)Math.Floor((slot - FenceWindow.ChromeW) / FenceWindow.CellW));
+        double w = FenceWindow.ChromeW + cols * FenceWindow.CellW;
+        double h = FenceWindow.ChromeH + 3 * FenceWindow.CellH;
 
         FenceConfig Make(string title, double index, params string[] rules) => new()
         {
@@ -164,6 +171,7 @@ public class FenceManager
         var win = new FenceWindow(cfg, this);
         _windows.Add(win);
         win.Show();
+        win.SetDesktopShown(_showDesktop.IsShown);
     }
 
     private static void ClampToScreen(FenceConfig c)
@@ -212,6 +220,25 @@ public class FenceManager
         w.ForceClose = true;
         w.Close();
         ScheduleSave();
+    }
+
+    /// <summary>Tüm bölmeleri aynı boyuta getirip düzgün bir ızgarada dizer.</summary>
+    public void ArrangeAll()
+    {
+        if (_windows.Count == 0) return;
+        var wa = SystemParameters.WorkArea;
+        const double gap = 20;
+
+        double w = Math.Max(FenceWindow.SnapWidth(_windows.Max(x => x.Width)), FenceWindow.ChromeW + 4 * FenceWindow.CellW);
+        double h = Math.Max(FenceWindow.SnapHeight(_windows.Max(x => x.Height)), FenceWindow.ChromeH + 3 * FenceWindow.CellH);
+
+        double x0 = wa.Left + gap, x = x0, y = wa.Top + gap;
+        foreach (var win in _windows)
+        {
+            if (x > x0 && x + w > wa.Right - gap) { x = x0; y += h + gap; }
+            win.ApplyGeometry(x, y, w, h);
+            x += w + gap;
+        }
     }
 
     public void SetDefault(FenceWindow w)
