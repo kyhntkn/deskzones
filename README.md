@@ -6,6 +6,8 @@ Masaüstünü isimli, yarı saydam bölmelere ayıran Windows programı.
 - Masaüstüne düşen yeni dosyalar kurallara göre ilgili bölmeye girer, alt alta/yan yana dizilir
 - Simgeleri bölmeler arasında ve bölme içinde sürükleyip sıralayabilirsin
 - Bölme adı: başlığa çift tıkla. Sağ tık: kurallar, varsayılan bölme, yeni/sil. Bu Bilgisayar, Ağ, Geri Dönüşüm Kutusu gibi sistem simgeleri de bölmelerde görünür (kural: `[sistem]`)
+- Bölmeler simge ızgarasına oturur (boyut tam sütun/satıra, konum 20 px ızgaraya). Sağ tık veya tepsi menüsünden "Bölmeleri hizala" hepsini aynı boyutta dizer
+- "Masaüstünü göster" düğmesine basınca bölmeler görünür kalır
 - Sistem tepsisi simgesinden: yeni bölme, masaüstü simgelerini göster/gizle, çıkış
 
 ## Kurallar
@@ -42,6 +44,5 @@ Kendi bilgisayarında MSIX'i denemek için imzalaman gerekir; .exe ile test etme
 
 ## Bilinen sınırlar
 
-- "Masaüstünü göster" (Win+D) bölmeleri de gizleyebilir.
 - Simgeler gizliyken masaüstüne sağ tık menüsü yine çalışır, ama masaüstündeki öğeleri sadece bölmelerden görürsün.
 - MSIX sürümünde "Windows ile başlat" Ayarlar > Uygulamalar > Başlangıç'tan açılır.
