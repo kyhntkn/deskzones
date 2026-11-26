@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,8 +16,25 @@ public partial class FenceWindow : Window
 {
     private const string DragFormat = "DeskZones.Item";
 
-    // Izgara ölçüleri (XAML ile uyumlu): hücre 88x88, kenar boşlukları 10 / 44
-    public const double CellW = 88, CellH = 88, ChromeW = 10, ChromeH = 44, Grid = 20;
+    // Izgara ölçüleri (XAML ile uyumlu): öğe = simge + 48, hücre = öğe + 4 (36 px simgede 88x88),
+    // kenar boşlukları 10 / 44
+    public const double ChromeW = 10, ChromeH = 44, Grid = 20;
+    public const int DefaultIconSize = 36, MinIconSize = 24, MaxIconSize = 96, IconStep = 6;
+
+    public static int IconSize { get; private set; } = DefaultIconSize;
+    public static double CellW => IconSize + 52;
+    public static double CellH => IconSize + 52;
+
+    public static int ClampIconSize(int size) => Math.Clamp(size, MinIconSize, MaxIconSize);
+
+    /// <summary>Tüm bölmelerdeki simge/öğe boyutunu günceller (XAML DynamicResource ile bağlı).</summary>
+    public static void ApplyIconSize(int size)
+    {
+        IconSize = ClampIconSize(size);
+        var res = Application.Current.Resources;
+        res["DZ.IconSize"] = (double)IconSize;
+        res["DZ.ItemSize"] = (double)(IconSize + 48);
+    }
 
     public static double SnapWidth(double w) =>
         ChromeW + Math.Max(2, Math.Round((w - ChromeW) / CellW)) * CellW;
@@ -27,6 +45,9 @@ public partial class FenceWindow : Window
     private readonly FenceManager _manager;
     private Point _dragStart;
     private FenceItem? _dragItem;
+    private int _wheelDelta;
+    private bool _inShellMenu;
+    private long _shellMenuClosedAt;
 
     public FenceConfig Config { get; }
     public ObservableCollection<FenceItem> Items { get; } = new();
@@ -67,8 +88,60 @@ public partial class FenceWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        // Sağ tık menüsü açıkken "Birlikte aç", "Gönder" gibi alt menüler bu mesajlarla dolar/çizilir
+        if (ShellContextMenu.HandleMenuMessage(msg, wParam, lParam, out var result))
+        {
+            handled = true;
+            return result;
+        }
         if (msg == WM_EXITSIZEMOVE) SnapToGrid(); // taşıma/boyutlandırma bitince
         return IntPtr.Zero;
+    }
+
+    /// <summary>Simge boyutu değişince bölmeyi yeni hücre ölçüsüne oturtur.</summary>
+    public void ResnapSize()
+    {
+        Width = SnapWidth(Width);
+        Height = SnapHeight(Height);
+        _manager.ScheduleSave();
+    }
+
+    // ---------------- Yakınlaştırma (Ctrl + tekerlek / Ctrl + +/-/0) ----------------
+
+    protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            // Dokunmatik yüzeyler küçük adımlar gönderir; tam bir "çentik" birikince bir kademe ilerle
+            _wheelDelta += e.Delta;
+            int steps = _wheelDelta / Mouse.MouseWheelDeltaForOneLine;
+            if (steps != 0)
+            {
+                _wheelDelta -= steps * Mouse.MouseWheelDeltaForOneLine;
+                _manager.ZoomBy(steps);
+            }
+            e.Handled = true;
+            return;
+        }
+        _wheelDelta = 0;
+        base.OnPreviewMouseWheel(e);
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (TitleBox.Visibility != Visibility.Visible && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            switch (e.Key)
+            {
+                case Key.OemPlus: case Key.Add:
+                    _manager.ZoomBy(1); e.Handled = true; return;
+                case Key.OemMinus: case Key.Subtract:
+                    _manager.ZoomBy(-1); e.Handled = true; return;
+                case Key.D0: case Key.NumPad0:
+                    _manager.ResetZoom(); e.Handled = true; return;
+            }
+        }
+        base.OnPreviewKeyDown(e);
     }
 
     private void SnapToGrid()
@@ -223,33 +296,178 @@ public partial class FenceWindow : Window
         if (ItemAt(e.OriginalSource) is { } item) Open(item.FullPath);
     }
 
-    private void OpenItem_Click(object sender, RoutedEventArgs e)
+    private IntPtr Hwnd => new WindowInteropHelper(this).Handle;
+
+    /// <summary>
+    /// Sağ tık menüsüne gidecek öğeler: tıklanan öğe + aynı klasördeki diğer seçili öğeler
+    /// (Explorer da tek menüde sadece aynı klasördeki öğeleri birleştirir).
+    /// </summary>
+    private List<FenceItem> SelectionGroup(FenceItem anchor)
     {
-        if (ItemsList.SelectedItem is FenceItem item) Open(item.FullPath);
+        var group = new List<FenceItem> { anchor };
+        if (anchor.IsVirtual) return group;
+        var dir = Path.GetDirectoryName(anchor.FullPath);
+        foreach (var obj in ItemsList.SelectedItems)
+        {
+            if (obj is FenceItem { IsVirtual: false } other && other != anchor &&
+                string.Equals(Path.GetDirectoryName(other.FullPath), dir, StringComparison.OrdinalIgnoreCase))
+                group.Add(other);
+        }
+        return group;
     }
 
-    private void ShowItem_Click(object sender, RoutedEventArgs e)
+    /// <summary>Klavye odağındaki seçili öğe, yoksa ilk seçili öğe.</summary>
+    private FenceItem? FocusedSelection()
     {
-        if (ItemsList.SelectedItem is FenceItem { IsVirtual: false } item)
-            Process.Start("explorer.exe", $"/select,\"{item.FullPath}\"");
+        if (Keyboard.FocusedElement is DependencyObject d &&
+            ItemAt(d) is { } focused && ItemsList.SelectedItems.Contains(focused))
+            return focused;
+        return ItemsList.SelectedItems.OfType<FenceItem>().FirstOrDefault();
+    }
+
+    private void ShowShellMenu(FenceItem anchor, int x, int y)
+    {
+        var paths = SelectionGroup(anchor).Select(i => i.FullPath).ToList();
+        string? verb;
+        _inShellMenu = true;
+        try { verb = ShellContextMenu.Show(Hwnd, paths, x, y); }
+        finally
+        {
+            _inShellMenu = false;
+            _shellMenuClosedAt = Environment.TickCount64;
+        }
+        if (verb == "rename") RenameItem(anchor);
+    }
+
+    private void InvokeOnSelection(string verb)
+    {
+        if (FocusedSelection() is not { } anchor) return;
+        ShellContextMenu.InvokeVerb(Hwnd, SelectionGroup(anchor).Select(i => i.FullPath).ToList(), verb);
+    }
+
+    /// <summary>Windows'taki gibi yeniden adlandırma: uzantı korunur, sadece ad kısmı seçili gelir.</summary>
+    private void RenameItem(FenceItem item)
+    {
+        if (item.IsVirtual) return;
+        string full = item.FullPath;
+        string? dir = Path.GetDirectoryName(full);
+        if (dir == null) return;
+
+        string fileName = Path.GetFileName(full);
+        string ext = item.IsFolder ? "" : Path.GetExtension(fileName);
+        // Kısayolların uzantısı Explorer'da hiç görünmez; burada da gizleyip geri ekleriz
+        bool hideExt = ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
+                       ext.Equals(".url", StringComparison.OrdinalIgnoreCase);
+        string shown = hideExt ? Path.GetFileNameWithoutExtension(fileName) : fileName;
+        int selectLength = item.IsFolder || hideExt || ext.Length == 0 ? shown.Length : shown.Length - ext.Length;
+
+        var answer = TextPromptWindow.Ask(this, "Yeniden adlandır", "Yeni ad:", shown, selectLength);
+        if (string.IsNullOrWhiteSpace(answer)) return;
+
+        string newName = answer.Trim().TrimEnd('.') + (hideExt ? ext : "");
+        if (newName == fileName || newName.Length == 0) return;
+        if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            MessageBox.Show("Dosya adı şu karakterleri içeremez:\n\\ / : * ? \" < > |", "DeskZones",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        string dest = Path.Combine(dir, newName);
+        bool caseOnly = string.Equals(dest, full, StringComparison.OrdinalIgnoreCase);
+        if (!caseOnly && (File.Exists(dest) || Directory.Exists(dest)))
+        {
+            MessageBox.Show($"Bu konumda zaten \"{newName}\" adında bir öğe var.", "DeskZones",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            if (item.IsFolder)
+            {
+                if (caseOnly)
+                {
+                    // Sadece büyük/küçük harf değişikliği: geçici adla iki adımda
+                    string tmp = Path.Combine(dir, Guid.NewGuid().ToString("N"));
+                    Directory.Move(full, tmp);
+                    Directory.Move(tmp, dest);
+                }
+                else Directory.Move(full, dest);
+            }
+            else File.Move(full, dest);
+            // Masaüstü izleyicisi yeniden adlandırmayı görüp öğeyi aynı yerde günceller
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "DeskZones", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void ItemsList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         var item = ItemAt(e.OriginalSource);
-        if (item != null) ItemsList.SelectedItem = item;
-        else ItemsList.SelectedItem = null;
+        if (item == null) ItemsList.UnselectAll();
+        else if (!ItemsList.SelectedItems.Contains(item)) ItemsList.SelectedItem = item;
+    }
+
+    private void ItemsList_PreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var item = ItemAt(e.OriginalSource);
+        if (item == null) return;          // boş alan: bölme menüsü açılsın
+        e.Handled = true;                  // WPF menüsünü engelle
+        var (x, y) = ShellContextMenu.CursorPosition();
+        ShowShellMenu(item, x, y);
     }
 
     private void ItemsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        // Boş alana sağ tıklanırsa öğe menüsü yerine bölme menüsünü göster.
-        if (ItemsList.SelectedItem == null)
+        // Az önce Windows menüsü gösterildiyse bölme menüsü arkasından açılmasın
+        if (_inShellMenu || Environment.TickCount64 - _shellMenuClosedAt < 300)
         {
             e.Handled = true;
-            FenceMenu.PlacementTarget = ItemsList;
-            FenceMenu.IsOpen = true;
+            return;
         }
+
+        // Klavyeden (Menü tuşu / Shift+F10) açılış: seçili öğe varsa Windows menüsü
+        if (FocusedSelection() is { } item &&
+            ItemsList.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem container)
+        {
+            e.Handled = true;
+            var p = container.PointToScreen(new Point(container.ActualWidth / 2, container.ActualHeight / 2));
+            ShowShellMenu(item, (int)p.X, (int)p.Y);
+        }
+        // Aksi halde olay yukarı gider ve bölme menüsü açılır
+    }
+
+    private void ItemsList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var mods = Keyboard.Modifiers;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key; // Alt basılıyken WPF tuşu Key.System verir
+        switch (key)
+        {
+            case Key.Enter when mods == ModifierKeys.None:
+                foreach (var i in ItemsList.SelectedItems.OfType<FenceItem>().ToList()) Open(i.FullPath);
+                break;
+            case Key.F2 when mods == ModifierKeys.None:
+                if (FocusedSelection() is { } item) RenameItem(item);
+                break;
+            case Key.Delete when mods is ModifierKeys.None or ModifierKeys.Shift:
+                InvokeOnSelection("delete");   // Shift+Delete: kalıcı sil (Windows sorar)
+                break;
+            case Key.C when mods == ModifierKeys.Control:
+                InvokeOnSelection("copy");
+                break;
+            case Key.X when mods == ModifierKeys.Control:
+                InvokeOnSelection("cut");
+                break;
+            case Key.Enter when mods == ModifierKeys.Alt:
+                InvokeOnSelection("properties");
+                break;
+            default:
+                return;
+        }
+        e.Handled = true;
     }
 
     // ---------------- Sürükle & bırak ----------------

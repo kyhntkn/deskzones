@@ -3,13 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
-        MinWidth="186" MinHeight="132" AllowDrop="True"
+        MinWidth="162" MinHeight="120" AllowDrop="True"
         WindowStartupLocation="Manual" Title="DeskZones">
 
     <Window.Resources>
         <Style TargetType="ListBoxItem">
-            <Setter Property="Width" Value="84"/>
-            <Setter Property="Height" Value="84"/>
+            <!-- Boyutlar Ctrl+tekerlek ile değişir (FenceWindow.ApplyIconSize) -->
+            <Setter Property="Width" Value="{DynamicResource DZ.ItemSize}"/>
+            <Setter Property="Height" Value="{DynamicResource DZ.ItemSize}"/>
             <Setter Property="Margin" Value="2"/>
             <Setter Property="Padding" Value="2"/>
             <Setter Property="Template">
@@ -66,17 +67,15 @@
 
             <ListBox x:Name="ItemsList" Grid.Row="1" Background="Transparent" BorderThickness="0"
                      Margin="4" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     SelectionMode="Extended"
                      MouseDoubleClick="ItemsList_MouseDoubleClick"
                      PreviewMouseLeftButtonDown="ItemsList_PreviewMouseLeftButtonDown"
                      PreviewMouseRightButtonDown="ItemsList_PreviewMouseRightButtonDown"
+                     PreviewMouseRightButtonUp="ItemsList_PreviewMouseRightButtonUp"
+                     PreviewKeyDown="ItemsList_PreviewKeyDown"
                      PreviewMouseMove="ItemsList_PreviewMouseMove"
                      ContextMenuOpening="ItemsList_ContextMenuOpening">
-                <ListBox.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="Aç" Click="OpenItem_Click"/>
-                        <MenuItem Header="Dosya konumunu göster" Click="ShowItem_Click"/>
-                    </ContextMenu>
-                </ListBox.ContextMenu>
+                <!-- Öğelere sağ tık: Windows'un kendi menüsü (ShellContextMenu). Boş alana sağ tık: bölme menüsü. -->
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel Orientation="Horizontal"/>
@@ -85,7 +84,9 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel ToolTip="{Binding FullPath}">
-                            <Image Source="{Binding Icon}" Width="36" Height="36" HorizontalAlignment="Center"/>
+                            <Image Source="{Binding Icon}" HorizontalAlignment="Center"
+                                   Width="{DynamicResource DZ.IconSize}" Height="{DynamicResource DZ.IconSize}"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
                             <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12"
                                        TextAlignment="Center" TextWrapping="Wrap"
                                        TextTrimming="CharacterEllipsis" MaxHeight="34" Margin="0,4,0,0">
