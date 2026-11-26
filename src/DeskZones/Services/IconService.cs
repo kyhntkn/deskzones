@@ -64,7 +64,114 @@ public static class IconService
 
     public static void Forget(string path) => Cache.TryRemove(path, out _);
 
-    private static ImageSource? Load(string path)
+    // ---- Yüksek çözünürlüklü simge (Ctrl+tekerlek ile büyütünce bulanık olmasın) ----
+
+    [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItemImageFactory
+    {
+        [PreserveSig] int GetImage(SIZE size, int flags, out IntPtr phbm);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SIZE { public int cx, cy; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAP
+    {
+        public int bmType, bmWidth, bmHeight, bmWidthBytes;
+        public ushort bmPlanes, bmBitsPixel;
+        public IntPtr bmBits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth, biHeight;
+        public ushort biPlanes, biBitCount;
+        public uint biCompression, biSizeImage;
+        public int biXPelsPerMeter, biYPelsPerMeter;
+        public uint biClrUsed, biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DIBSECTION
+    {
+        public BITMAP dsBm;
+        public BITMAPINFOHEADER dsBmih;
+        public uint dsBitfields0, dsBitfields1, dsBitfields2;
+        public IntPtr dshSection;
+        public uint dsOffset;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SHCreateItemFromParsingName(string path, IntPtr pbc, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory ppv);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetObject(IntPtr h, int size, out DIBSECTION ds);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr h);
+
+    private const int HiResSize = 128;
+    private const int SIIGBF_ICONONLY = 0x4;
+
+    private static ImageSource? LoadHiRes(string path)
+    {
+        IShellItemImageFactory? factory = null;
+        IntPtr hbmp = IntPtr.Zero;
+        try
+        {
+            var iid = typeof(IShellItemImageFactory).GUID;
+            SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out factory);
+            if (factory.GetImage(new SIZE { cx = HiResSize, cy = HiResSize }, SIIGBF_ICONONLY, out hbmp) != 0
+                || hbmp == IntPtr.Zero)
+                return null;
+
+            int got = GetObject(hbmp, Marshal.SizeOf<DIBSECTION>(), out var ds);
+            if (got != Marshal.SizeOf<DIBSECTION>() || ds.dsBm.bmBitsPixel != 32 || ds.dsBm.bmBits == IntPtr.Zero)
+            {
+                var plain = Imaging.CreateBitmapSourceFromHBitmap(hbmp, IntPtr.Zero, Int32Rect.Empty,
+                    BitmapSizeOptions.FromEmptyOptions());
+                plain.Freeze();
+                return plain;
+            }
+
+            int w = ds.dsBm.bmWidth, h = Math.Abs(ds.dsBm.bmHeight), stride = ds.dsBm.bmWidthBytes;
+            var buf = new byte[stride * h];
+            Marshal.Copy(ds.dsBm.bmBits, buf, 0, buf.Length);
+
+            if (ds.dsBmih.biHeight > 0) // alttan yukarı DIB: satırları çevir
+            {
+                var row = new byte[stride];
+                for (int top = 0, bottom = h - 1; top < bottom; top++, bottom--)
+                {
+                    Buffer.BlockCopy(buf, top * stride, row, 0, stride);
+                    Buffer.BlockCopy(buf, bottom * stride, buf, top * stride, stride);
+                    Buffer.BlockCopy(row, 0, buf, bottom * stride, stride);
+                }
+            }
+
+            bool hasAlpha = false;
+            for (int i = 3; i < buf.Length; i += 4) if (buf[i] != 0) { hasAlpha = true; break; }
+
+            var src = BitmapSource.Create(w, h, 96, 96,
+                hasAlpha ? PixelFormats.Pbgra32 : PixelFormats.Bgr32, null, buf, stride);
+            src.Freeze();
+            return src;
+        }
+        catch { return null; }
+        finally
+        {
+            if (hbmp != IntPtr.Zero) DeleteObject(hbmp);
+            if (factory != null) Marshal.ReleaseComObject(factory);
+        }
+    }
+
+    private static ImageSource? Load(string path) => LoadHiRes(path) ?? LoadSmall(path);
+
+    private static ImageSource? LoadSmall(string path)
     {
         try
         {

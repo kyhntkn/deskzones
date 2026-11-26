@@ -31,6 +31,10 @@ public class FenceManager
         if (_config.Fences.Count == 0) CreateDefaultFences();
         if (!_config.Fences.Any(f => f.IsDefault)) _config.Fences[^1].IsDefault = true;
 
+        // Hücre ölçüleri simge boyutuna bağlı: pencereler açılmadan önce uygula
+        _config.IconSize = FenceWindow.ClampIconSize(_config.IconSize);
+        FenceWindow.ApplyIconSize(_config.IconSize);
+
         Reconcile();
         foreach (var cfg in _config.Fences) OpenWindow(cfg);
 
@@ -245,6 +249,23 @@ public class FenceManager
     {
         foreach (var f in _config.Fences) f.IsDefault = f == w.Config;
         foreach (var win in _windows) win.RefreshTitle();
+        ScheduleSave();
+    }
+
+    // ---------------- Yakınlaştırma ----------------
+
+    /// <summary>Ctrl+tekerlek: simge boyutunu kademe kademe büyütür/küçültür (tüm bölmeler).</summary>
+    public void ZoomBy(int steps) => SetIconSize(FenceWindow.IconSize + steps * FenceWindow.IconStep);
+
+    public void ResetZoom() => SetIconSize(FenceWindow.DefaultIconSize);
+
+    private void SetIconSize(int size)
+    {
+        size = FenceWindow.ClampIconSize(size);
+        if (size == FenceWindow.IconSize) return;
+        _config.IconSize = size;
+        FenceWindow.ApplyIconSize(size);
+        foreach (var w in _windows) w.ResnapSize();
         ScheduleSave();
     }
 
