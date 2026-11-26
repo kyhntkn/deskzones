@@ -23,4 +23,7 @@ public class AppConfig
 {
     public List<FenceConfig> Fences { get; set; } = new();
     public bool IconsHidden { get; set; } = true;
+
+    /// <summary>Bölmelerdeki simge boyutu (Ctrl+fare tekerleği ile değişir).</summary>
+    public int IconSize { get; set; } = 36;
 }
