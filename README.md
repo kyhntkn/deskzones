@@ -8,6 +8,11 @@ Masaüstünü isimli, yarı saydam bölmelere ayıran Windows programı.
 - Bölme adı: başlığa çift tıkla. Sağ tık: kurallar, varsayılan bölme, yeni/sil. Bu Bilgisayar, Ağ, Geri Dönüşüm Kutusu gibi sistem simgeleri de bölmelerde görünür (kural: `[sistem]`)
 - Bölmeler simge ızgarasına oturur (boyut tam sütun/satıra, konum 20 px ızgaraya). Sağ tık veya tepsi menüsünden "Bölmeleri hizala" hepsini aynı boyutta dizer
 - "Masaüstünü göster" düğmesine basınca bölmeler görünür kalır
+- Öğeye sağ tık: Windows'un kendi menüsü (Aç, Birlikte aç, Paylaş, Kes, Kopyala, Kısayol oluştur, Sil,
+  Yeniden adlandır, Özellikler, Gönder, yüklü programların eklentileri…). Shift+sağ tık: genişletilmiş menü
+  ("Yol olarak kopyala" vb.). Ctrl/Shift ile birden çok öğe seçilebilir
+- Kısayol tuşları: Enter (aç), F2 (yeniden adlandır), Delete / Shift+Delete (sil), Ctrl+C / Ctrl+X, Alt+Enter (özellikler)
+- Ctrl + fare tekerleği (veya Ctrl + / Ctrl − , Ctrl+0 sıfırlar): simgeleri büyütür/küçültür (24–96 px, tüm bölmeler)
 - Sistem tepsisi simgesinden: yeni bölme, masaüstü simgelerini göster/gizle, çıkış
 
 ## Kurallar
